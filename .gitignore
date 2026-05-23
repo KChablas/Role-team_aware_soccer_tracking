@@ -1,0 +1,41 @@
+# Model weights (stored in GCS bucket, not in git)
+weights/*.pt
+*.pt
+weights/*.pt.tar
+weights/*.pth.tar
+weights/*.pth
+
+# Data
+data/
+eval_workspace/
+
+# Output
+output/
+results.zip
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Environment
+*.env
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Conda
+*.conda
