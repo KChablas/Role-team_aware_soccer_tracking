@@ -12,6 +12,7 @@ eval_workspace/
 # Output
 output/
 results.zip
+results/
 
 # Python
 __pycache__/
@@ -39,3 +40,5 @@ Thumbs.db
 
 # Conda
 *.conda
+
+

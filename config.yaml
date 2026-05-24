@@ -101,3 +101,8 @@ team_assigner:
   blend_euclidean: 0.2
   blend_chi_square: 0.5
   blend_weighted: 0.3
+
+# ============================================================
+# Ablation
+# ============================================================
+enable_team_assignment: true   # Set to false to disable team-aware tracking

@@ -115,4 +115,4 @@ class PRTreIDBoxMOTAdapter(nn.Module):
             crops.append(crop.transpose(2, 0, 1))
 
         crops_tensor = torch.tensor(np.array(crops), dtype=torch.float32).to(self.device)
-        return self.forward(crops_tensor)
+        return self.forward(crops_tensor).cpu().numpy()

@@ -35,7 +35,7 @@ class SequenceRunner:
 
             # Team classification
             detection_labels = None
-            if len(detections) > 0:
+            if self.team_assigner is not None and len(detections) > 0:
                 detection_labels = self.team_assigner.classify_detections(frame, detections)
 
             # Filter person-class detections for tracker
@@ -51,7 +51,7 @@ class SequenceRunner:
             )
 
             # Team assignment collection
-            if len(player_tracks) > 0:
+            if self.team_assigner is not None and len(player_tracks) > 0:
                 self.team_assigner.assign_team_color(frame, player_tracks)
 
             # Write player/GK/referee tracks

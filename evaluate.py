@@ -316,7 +316,7 @@ def evaluate_sequence(pred_file, gt_file, gameinfo_map, min_frame):
     """
     Returns:
         role_pairs: list of (gt_role_id, pred_role_id)
-        team_pairs: list of (gt_team_str, pred_team_str) — only for player/GK with known team
+        team_pairs_with_roles: list of (gt_team_str, pred_team_str, gt_role_id, pred_role_id)
     """
     gt_rows = read_mot_file(gt_file)
     pred_rows = read_mot_file(pred_file)
@@ -331,7 +331,7 @@ def evaluate_sequence(pred_file, gt_file, gameinfo_map, min_frame):
     pred_by_frame = group_by_frame(pred_filtered)
 
     role_pairs = []
-    team_pairs = []
+    team_pairs_with_roles = []
 
     all_frames = sorted(set(gt_by_frame) | set(pred_by_frame))
 
@@ -375,9 +375,9 @@ def evaluate_sequence(pred_file, gt_file, gameinfo_map, min_frame):
                 if pred_team_label in (1, 2, 3, 4):
                     # Map predicted label → side
                     pred_side = 'left' if pred_team_label in (1, 3) else 'right'
-                    team_pairs.append((gt_info['team'], pred_side))
+                    team_pairs_with_roles.append((gt_info['team'], pred_side, gt_role_id, pred_cls))
 
-    return role_pairs, team_pairs
+    return role_pairs, team_pairs_with_roles
 
 
 def compute_role_metrics(role_pairs):
@@ -459,6 +459,28 @@ def compute_combined_accuracy(role_pairs, team_pairs):
     return role_acc_sub * team_acc
 
 
+def compute_combined_accuracy_exact(role_pairs, team_pairs_with_roles):
+    """% of detections where BOTH role AND team are correct, using the optimal team permutation."""
+    if not team_pairs_with_roles:
+        return 0.0
+    team_only = [(gt_t, pred_t) for gt_t, pred_t, _, _ in team_pairs_with_roles]
+    _, _, _, perm = compute_team_metrics(team_only)
+    correct = 0
+    for gt_team, pred_team, gt_role, pred_role in team_pairs_with_roles:
+        role_ok = (gt_role == pred_role)
+        team_ok = (gt_team == pred_team) if perm == 'ours_left=GT_left' else (gt_team != pred_team)
+        if role_ok and team_ok:
+            correct += 1
+    return correct / len(team_pairs_with_roles)
+
+
+def weighted_mean(per_seq_results, key, weight_key):
+    total_w = sum(r[weight_key] for r in per_seq_results)
+    if total_w == 0:
+        return 0.0
+    return sum(r[key] * r[weight_key] for r in per_seq_results) / total_w
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 4 – Per-sequence CSV
 # ─────────────────────────────────────────────────────────────────────────────
@@ -469,7 +491,7 @@ def save_per_sequence_csv(per_seq_results, output_path):
     fieldnames = ['sequence', 'role_accuracy', 'gk_f1', 'player_f1', 'referee_f1',
                   'team_accuracy', 'combined_accuracy', 'n_role_pairs', 'n_team_pairs']
     with open(output_path, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
         writer.writeheader()
         for row in per_seq_results:
             writer.writerow(row)
@@ -585,45 +607,82 @@ def main():
 
     # ── Stages 2–4: Role / Team / Per-sequence ───────────────────────────────
     print("Stages 2-3: Role and team evaluation...")
-    all_role_pairs = []
-    all_team_pairs = []
-    per_seq_results = []
 
+    # Check if predictions have team info (ablation mode detection)
+    has_team_info = False
     for seq in valid_seqs:
         pred_file = Path(pred_dir) / f"{seq}.txt"
-        gt_file = Path(gt_dir) / seq / 'gt' / 'gt.txt'
+        if pred_file.exists():
+            rows = read_mot_file(pred_file)
+            for r in rows:
+                if len(r) > 8 and int(r[8]) >= 0:
+                    has_team_info = True
+                    break
+        if has_team_info:
+            break
 
-        if not pred_file.exists() or not gt_file.exists():
-            continue
+    all_role_pairs = []
+    per_seq_results = []
+    per_class = {}
+    role_acc = team_acc = acc_left = acc_right = combined_acc = 0.0
+    perm = 'per-sequence'
 
-        role_pairs, team_pairs = evaluate_sequence(
-            pred_file, gt_file, gameinfo_maps[seq], min_frame
-        )
+    if not has_team_info:
+        print("  No team/role labels in predictions (ablation mode) — skipping stages 2-3")
+    else:
+        for seq in valid_seqs:
+            pred_file = Path(pred_dir) / f"{seq}.txt"
+            gt_file = Path(gt_dir) / seq / 'gt' / 'gt.txt'
 
-        all_role_pairs.extend(role_pairs)
-        all_team_pairs.extend(team_pairs)
+            if not pred_file.exists() or not gt_file.exists():
+                continue
 
-        # Per-sequence metrics
-        seq_per_class, seq_role_acc = compute_role_metrics(role_pairs)
-        seq_team_acc, _, _, _ = compute_team_metrics(team_pairs)
-        seq_combined = compute_combined_accuracy(role_pairs, team_pairs)
+            role_pairs, team_pairs_with_roles = evaluate_sequence(
+                pred_file, gt_file, gameinfo_maps[seq], min_frame
+            )
+            team_pairs = [(gt_t, pred_t) for gt_t, pred_t, _, _ in team_pairs_with_roles]
 
-        per_seq_results.append({
-            'sequence': seq,
-            'role_accuracy': round(seq_role_acc, 4),
-            'gk_f1': round(seq_per_class.get(1, {}).get('F1', 0), 4),
-            'player_f1': round(seq_per_class.get(2, {}).get('F1', 0), 4),
-            'referee_f1': round(seq_per_class.get(3, {}).get('F1', 0), 4),
-            'team_accuracy': round(seq_team_acc, 4),
-            'combined_accuracy': round(seq_combined, 4),
-            'n_role_pairs': len(role_pairs),
-            'n_team_pairs': len(team_pairs),
-        })
+            all_role_pairs.extend(role_pairs)
 
-    # ── Aggregate ────────────────────────────────────────────────────────────
-    per_class, role_acc = compute_role_metrics(all_role_pairs)
-    team_acc, acc_left, acc_right, perm = compute_team_metrics(all_team_pairs)
-    combined_acc = compute_combined_accuracy(all_role_pairs, all_team_pairs)
+            # Per-sequence metrics
+            seq_per_class, seq_role_acc = compute_role_metrics(role_pairs)
+            seq_team_acc, seq_acc_left, seq_acc_right, _ = compute_team_metrics(team_pairs)
+            seq_combined = compute_combined_accuracy_exact(role_pairs, team_pairs_with_roles)
+
+            per_seq_results.append({
+                'sequence': seq,
+                'role_accuracy': round(seq_role_acc, 4),
+                'gk_f1': round(seq_per_class.get(1, {}).get('F1', 0), 4),
+                'player_f1': round(seq_per_class.get(2, {}).get('F1', 0), 4),
+                'referee_f1': round(seq_per_class.get(3, {}).get('F1', 0), 4),
+                'team_accuracy': round(seq_team_acc, 4),
+                'combined_accuracy': round(seq_combined, 4),
+                'n_role_pairs': len(role_pairs),
+                'n_team_pairs': len(team_pairs),
+                'player_p': seq_per_class.get(2, {}).get('P', 0),
+                'player_r': seq_per_class.get(2, {}).get('R', 0),
+                'gk_p': seq_per_class.get(1, {}).get('P', 0),
+                'gk_r': seq_per_class.get(1, {}).get('R', 0),
+                'referee_p': seq_per_class.get(3, {}).get('P', 0),
+                'referee_r': seq_per_class.get(3, {}).get('R', 0),
+                'acc_side_a': seq_acc_left,
+                'acc_side_b': seq_acc_right,
+            })
+
+        # ── Aggregate: weighted per-sequence means ────────────────────────────
+        if per_seq_results:
+            role_acc = weighted_mean(per_seq_results, 'role_accuracy', 'n_role_pairs')
+            team_acc = weighted_mean(per_seq_results, 'team_accuracy', 'n_team_pairs')
+
+            for role_id, prefix in [(2, 'player'), (1, 'gk'), (3, 'referee')]:
+                p = weighted_mean(per_seq_results, f'{prefix}_p', 'n_role_pairs')
+                r = weighted_mean(per_seq_results, f'{prefix}_r', 'n_role_pairs')
+                f1 = 2 * p * r / (p + r) if (p + r) > 0 else 0.0
+                per_class[role_id] = {'P': p, 'R': r, 'F1': f1}
+
+            acc_left = weighted_mean(per_seq_results, 'acc_side_a', 'n_team_pairs')
+            acc_right = weighted_mean(per_seq_results, 'acc_side_b', 'n_team_pairs')
+            combined_acc = weighted_mean(per_seq_results, 'combined_accuracy', 'n_role_pairs')
 
     # ── Stage 4: Save per-sequence CSV ──────────────────────────────────────
     save_per_sequence_csv(per_seq_results, out_dir / 'evaluation_per_sequence.csv')

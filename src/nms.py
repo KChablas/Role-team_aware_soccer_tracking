@@ -167,7 +167,7 @@ def my_non_max_suppression(
             LOGGER.warning(f"NMS time limit {time_limit:.3f}s exceeded")
             break  # time limit exceeded
         if box_of_ball is not None:
-            output[xi] = torch.cat((output[xi], box_of_ball.unsqueeze(0)), dim=0)
+            output[xi] = torch.cat((output[xi], box_of_ball.unsqueeze(0).to(output[xi].device)), dim=0)
 
     return (output, keepi) if return_idxs else output
 
@@ -404,6 +404,6 @@ def my_logic_ball(box, cls, mask):
 
     if box_of_ball is not None:
         conf_and_class = torch.tensor([1.0, 0.0])  # Dummy confidence and class for box_of_ball
-        box_of_ball = torch.cat((box_of_ball, conf_and_class), dim=0)
+        box_of_ball = torch.cat((box_of_ball.to(conf_and_class.device), conf_and_class), dim=0)
 
     return filtered_box, filtered_cls, filtered_mask, box_of_ball

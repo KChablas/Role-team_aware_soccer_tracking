@@ -60,7 +60,11 @@ def main():
         # Per-sequence stateful components — fresh each time
         camera_estimator = CameraEstimator(config)
         tracker = StrongSortTracker(config, reid_adapter, camera_estimator)
-        team_assigner = TeamAssignerV2(config)
+        if config.get('enable_team_assignment', True):
+            team_assigner = TeamAssignerV2(config)
+        else:
+            team_assigner = None
+            config.get('tracker', {})['team_penalty'] = 0.0
 
         runner = SequenceRunner(
             sequence_dir=seq_dir,
