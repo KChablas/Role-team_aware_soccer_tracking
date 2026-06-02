@@ -1,4 +1,0 @@
- GT \ Pred        GK    Player   Referee
-        GK      8499      3763        48
-    Player      2537    402620      8561
-   Referee      5408      7858     28876
