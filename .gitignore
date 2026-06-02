@@ -42,3 +42,4 @@ Thumbs.db
 *.conda
 
 
+"precomputed_detections/" 
