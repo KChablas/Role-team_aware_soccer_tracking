@@ -1,3 +1,5 @@
+import os
+
 import cv2
 import numpy as np
 from pathlib import Path
@@ -9,7 +11,7 @@ class SequenceRunner:
     """Processes a single SNMOT sequence from frame images."""
 
     def __init__(self, sequence_dir, output_path, detector, tracker,
-                 team_assigner, camera_estimator, config):
+                 team_assigner, camera_estimator, config, precomputed_path=None):
         self.sequence_dir = Path(sequence_dir)
         self.output_path = output_path
         self.detector = detector
@@ -17,6 +19,10 @@ class SequenceRunner:
         self.team_assigner = team_assigner
         self.camera_estimator = camera_estimator
         self.verbose = config.get('verbose', False)
+        self.precomputed = None
+        if precomputed_path and os.path.exists(precomputed_path):
+            self.precomputed = np.load(precomputed_path)
+            print(f"  Using precomputed detections from {precomputed_path}")
 
     def run(self):
         img_dir = self.sequence_dir / 'img1'
@@ -31,7 +37,11 @@ class SequenceRunner:
                 continue
 
             # Detection
-            detections = self.detector.detect(frame)
+            if self.precomputed is not None:
+                key = f"frame_{frame_id:04d}"
+                detections = self.precomputed[key]
+            else:
+                detections = self.detector.detect(frame)
 
             # Team classification
             detection_labels = None
@@ -66,6 +76,8 @@ class SequenceRunner:
                 print(f"  Frame {frame_id}: {len(player_tracks)} tracks")
 
         writer.close()
+        if self.precomputed is not None:
+            self.precomputed.close()
 
     def _filter_player_detections(self, detections, detection_labels):
         """Extract class 1/2/3 detections and their parallel labels."""

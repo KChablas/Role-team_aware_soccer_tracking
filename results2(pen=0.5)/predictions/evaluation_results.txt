@@ -1,0 +1,19 @@
+============================================
+         MOT Evaluation Results
+============================================
+HOTA:  46.17   (DetA: 60.40, AssA: 35.49)
+MOTA:  68.55   MOTP:  79.56
+IDF1:  52.75   IDP:   56.61   IDR: 49.38
+============================================
+      Role/Team Classification Results
+============================================
+Role Accuracy:          93.97%
+  Player  P/R/F1:       97.1 / 97.3 / 97.2
+  GK      P/R/F1:       63.2 / 67.9 / 65.5
+  Referee P/R/F1:       86.8 / 67.6 / 76.0
+Team Accuracy:          96.90%
+  Side A accuracy:      96.36%
+  Side B accuracy:      96.92%
+Combined (Role+Team):   96.10%
+Permutation used:       per-sequence
+============================================

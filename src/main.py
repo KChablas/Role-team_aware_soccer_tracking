@@ -48,6 +48,7 @@ def main():
         device=config.get('device', 'cpu'),
     )
 
+    precomputed_dir = config.get('precomputed_detections_dir', '')
     total_start = time.time()
 
     for idx, seq_name in enumerate(sequences, 1):
@@ -56,6 +57,14 @@ def main():
 
         print(f"Processing {seq_name} ({idx}/{total})...")
         seq_start = time.time()
+
+        precomputed_path = None
+        if precomputed_dir:
+            candidate = os.path.join(precomputed_dir, f"{seq_name}.npz")
+            if os.path.exists(candidate):
+                precomputed_path = candidate
+            else:
+                print(f"  Warning: precomputed detections not found for {seq_name}, running detector live")
 
         # Per-sequence stateful components — fresh each time
         camera_estimator = CameraEstimator(config)
@@ -74,6 +83,7 @@ def main():
             team_assigner=team_assigner,
             camera_estimator=camera_estimator,
             config=config,
+            precomputed_path=precomputed_path,
         )
         runner.run()
 
